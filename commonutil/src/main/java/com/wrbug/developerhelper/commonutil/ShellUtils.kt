@@ -1,57 +1,35 @@
 package com.wrbug.developerhelper.commonutil
 
-import com.jaredrummler.android.shell.CommandResult
-import com.jaredrummler.android.shell.Shell
-import org.jetbrains.anko.doAsync
+import com.jaredrummler.ktsh.Shell
+import io.reactivex.rxjava3.core.Single
 
 object ShellUtils {
-    fun run(cmds: Array<String>, callback: ShellResultCallback) {
-        doAsync {
-            val run = Shell.SH.run(*cmds)
-            callback.onComplete(run)
+    fun run(cmd: String): Shell.Command.Result {
+        return Shell.SH.run(cmd)
+    }
+
+    fun runWithSuAsync(cmds: Array<String>): Single<Shell.Command.Result> {
+        return runWithSuAsync(cmds.joinToString(" && "))
+    }
+
+    fun runWithSuAsync(cmds: String): Single<Shell.Command.Result> {
+        return Single.just(cmds).map {
+            if (!RootUtils.isRoot()) {
+                throw ShellException("未开启root权限")
+            }
+            Shell.SU.run(it)
         }
     }
 
-    fun run(vararg cmds: String): CommandResult {
-        return Shell.SH.run(*cmds)
+    fun runWithSu(vararg cmd: String): Shell.Command.Result {
+        return runWithSu(cmd.joinToString(" && "))
     }
 
-    fun runWithSu(cmds: Array<String>, callback: ShellResultCallback) {
-        if (!RootUtils.isRoot()) {
-            callback.onError("未开启root权限")
-            return
-        }
-        doAsync {
-            val run = Shell.SU.run(*cmds)
-            callback.onComplete(run)
-        }
-    }
-
-    fun runWithSuIgnoreSetting(vararg cmds: String): CommandResult {
-        return Shell.SU.run(*cmds)
-    }
-
-
-    fun runWithSu(vararg cmds: String): CommandResult {
-        if (RootUtils.isRoot().not()) {
-            return CommandResult(arrayListOf("未开启root权限"), arrayListOf("未开启root权限"), 1)
-        }
-        return Shell.SU.run(*cmds)
+    fun runWithSu(cmd: String): Shell.Command.Result {
+        return Shell.SU.run(cmd)
     }
 
     fun isRoot(): Boolean {
-        return Shell.SU.available()
+        return Shell.SU.isAlive()
     }
-
-    abstract class ShellResultCallback(vararg args: Any) {
-        protected var args = args
-        open fun onComplete(result: CommandResult) {
-
-        }
-
-        open fun onError(msg: String) {
-
-        }
-    }
-
 }

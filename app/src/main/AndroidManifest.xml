@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.wrbug.developerhelper">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".DeveloperApplication"
@@ -20,10 +28,9 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         tools:ignore="GoogleAppIndexingWarning">
-        <activity android:name=".ui.activity.xposed.appxposedmodulemanager.AppXposedModuleManagerActivity"></activity>
-        <activity android:name=".ui.activity.xposed.appxposedsetting.AppXposedSettingActivity" />
         <activity
             android:name=".ui.activity.main.MainActivity"
+            android:exported="true"
             android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -34,6 +41,7 @@
 
         <service
             android:name=".service.DeveloperHelperAccessibilityService"
+            android:exported="false"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -52,14 +60,20 @@
             android:name=".service.FloatWindowService"
             android:enabled="true"
             android:exported="true"
+            android:foregroundServiceType="dataSync"
             android:process=":floatWindow" />
 
         <activity
             android:name=".ui.activity.guide.GuideActivity"
+            android:exported="false"
             android:label="@string/title_activity_guide"
             android:theme="@style/AppTheme.NoActionBar" />
-        <activity android:name=".ui.activity.sharedpreferencesedit.SharedPreferenceEditActivity" />
-        <activity android:name=".ui.activity.databaseedit.DatabaseEditActivity" />
+        <activity
+            android:name=".ui.activity.sharedpreferencesedit.SharedPreferenceEditActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.databaseedit.DatabaseEditActivity"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -70,10 +84,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/filepaths" />
         </provider>
-
-        <activity android:name=".ui.activity.xposed.xposedsetting.XposedSettingActivity" />
-        <activity android:name=".ui.activity.xposed.shellmanager.ShellAppManagerActivity" />
-        <activity android:name=".ui.activity.xposed.datafindermanager.DataFinderManagerActivity" />
     </application>
 
 </manifest>

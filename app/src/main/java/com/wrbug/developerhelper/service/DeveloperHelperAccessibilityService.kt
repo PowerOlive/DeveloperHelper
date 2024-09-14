@@ -1,25 +1,24 @@
 package com.wrbug.developerhelper.service
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Rect
+import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import com.wrbug.developerhelper.R
-import com.wrbug.developerhelper.basecommon.BaseApp
-import com.wrbug.developerhelper.basecommon.entry.HierarchyNode
-import com.wrbug.developerhelper.basecommon.showToast
+import com.wrbug.developerhelper.base.BaseApp
+import com.wrbug.developerhelper.base.entry.HierarchyNode
 import com.wrbug.developerhelper.commonutil.AppInfoManager
 import com.wrbug.developerhelper.commonutil.UiUtils
 import com.wrbug.developerhelper.commonutil.entity.ApkInfo
 import com.wrbug.developerhelper.commonutil.entity.TopActivityInfo
-import com.wrbug.developerhelper.commonutil.shell.Callback
-import com.wrbug.developerhelper.commonutil.shell.ShellManager
 import com.wrbug.developerhelper.constant.ReceiverConstant
 import com.wrbug.developerhelper.ui.activity.hierachy.HierarchyActivity
 
@@ -29,6 +28,7 @@ class DeveloperHelperAccessibilityService : AccessibilityService() {
     private var nodeId = 0L
     private var currentAppInfo: ApkInfo? = null
     private var topActivity: TopActivityInfo? = null
+    private val activityMap = hashMapOf<String, String>()
 
     companion object {
         internal var serviceRunning = false
@@ -41,7 +41,7 @@ class DeveloperHelperAccessibilityService : AccessibilityService() {
                     BaseApp.instance.applicationContext.contentResolver,
                     android.provider.Settings.Secure.ACCESSIBILITY_ENABLED
                 )
-            } catch (e: Settings.SettingNotFoundException) {
+            } catch (_: Settings.SettingNotFoundException) {
             }
 
             val mStringColonSplitter = TextUtils.SimpleStringSplitter(':')
@@ -64,7 +64,6 @@ class DeveloperHelperAccessibilityService : AccessibilityService() {
             return false
         }
 
-        //todo java.lang.RuntimeException:android.os.TransactionTooLargeException
         val nodeMap: HashMap<Long, HierarchyNode> = hashMapOf()
     }
 
@@ -72,7 +71,22 @@ class DeveloperHelperAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            || event.className.isNullOrEmpty()
+            || event.className?.startsWith("android.") == true
+            || event.packageName.isNullOrEmpty()
+        ) {
+            return
+        }
+        runCatching {
+            val info = packageManager.getActivityInfo(
+                ComponentName(
+                    event.packageName.toString(),
+                    event.className.toString()
+                ), 0
+            )
+            activityMap[info.packageName] = info.name
+        }
     }
 
     fun readNode(): ArrayList<HierarchyNode> {
@@ -88,6 +102,7 @@ class DeveloperHelperAccessibilityService : AccessibilityService() {
         return hierarchyNodes
     }
 
+
     private fun getDecorViewNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         for (index in 0 until node.childCount) {
             val child = node.getChild(index)
@@ -102,16 +117,20 @@ class DeveloperHelperAccessibilityService : AccessibilityService() {
         return null
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate() {
         super.onCreate()
         val filter = IntentFilter()
         filter.addAction(ReceiverConstant.ACTION_HIERARCHY_VIEW)
-        registerReceiver(receiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(receiver, filter)
+        }
         sendStatusBroadcast(true)
         serviceRunning = true
         nodeMap.clear()
     }
-
 
 
     override fun onDestroy() {
@@ -205,17 +224,11 @@ class DeveloperHelperAccessibilityService : AccessibilityService() {
 
 
     inner class DeveloperHelperAccessibilityReceiver : BroadcastReceiver() {
-        override fun onReceive(context: Context?, data: Intent?) {
-            showToast(getString(R.string.getting_app_info))
-            ShellManager.getTopActivity(object : Callback<TopActivityInfo?> {
-
-                override fun onSuccess(data: TopActivityInfo?) {
-                    topActivity = data
-                    val nodesInfo = readNode()
-                    HierarchyActivity.start(context, currentAppInfo, nodesInfo, topActivity)
-                }
-            })
-
+        override fun onReceive(context: Context, data: Intent?) {
+            val nodesInfo = readNode()
+            currentAppInfo?.topActivity =
+                activityMap[currentAppInfo?.packageInfo?.packageName].orEmpty()
+            HierarchyActivity.start(context, currentAppInfo, nodesInfo)
         }
     }
 

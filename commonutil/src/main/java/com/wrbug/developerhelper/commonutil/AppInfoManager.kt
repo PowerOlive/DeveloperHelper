@@ -1,8 +1,11 @@
 package com.wrbug.developerhelper.commonutil
 
+import android.app.ActivityManager
+import android.content.Context
 import com.wrbug.developerhelper.commonutil.entity.ApkInfo
 import com.wrbug.developerhelper.commonutil.shell.ShellManager
 import java.io.File
+
 
 object AppInfoManager {
     private val appMap = HashMap<String, ApkInfo>()
@@ -31,8 +34,27 @@ object AppInfoManager {
     }
 
 
+    fun getTopActivityClassName(context: Context): String? {
+        var topActivityClass: String? = null
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        try {
+            val runningTaskInfos = activityManager.getRunningTasks(1)
+            if (runningTaskInfos != null && runningTaskInfos.size > 0) {
+                val f = runningTaskInfos[0].topActivity
+                topActivityClass = f!!.className
+            }
+        } catch (e: Exception) {
+        }
+        return topActivityClass
+    }
+
+
     fun getSharedPreferencesFiles(packageName: String): Array<File> {
-        val path = "/data/data/$packageName/shared_prefs"
+        return getSharedPreferencesFiles(Constant.dataDir, packageName)
+    }
+
+    private fun getSharedPreferencesFiles(dir: String, packageName: String): Array<File> {
+        val path = "$dir/$packageName/shared_prefs"
         val list = ShellManager.lsDir(path)
         val files = ArrayList<File>()
         for (file in list) {
@@ -45,6 +67,5 @@ object AppInfoManager {
         }
         return files.toTypedArray()
     }
-
 
 }

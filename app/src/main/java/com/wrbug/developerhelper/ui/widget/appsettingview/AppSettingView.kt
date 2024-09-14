@@ -1,39 +1,32 @@
 package com.wrbug.developerhelper.ui.widget.appsettingview
 
-import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Context
-import android.content.DialogInterface
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.widget.ScrollView
+import androidx.appcompat.app.AlertDialog
+import androidx.fragment.app.FragmentActivity
+import com.wrbug.developerhelper.BuildConfig
 import com.wrbug.developerhelper.R
-import com.wrbug.developerhelper.basecommon.showToast
+import com.wrbug.developerhelper.base.requestStoragePermission
+import com.wrbug.developerhelper.base.showToast
 import com.wrbug.developerhelper.commonutil.AppManagerUtils
 import com.wrbug.developerhelper.commonutil.entity.ApkInfo
+import com.wrbug.developerhelper.util.setOnRootCheckClickListener
+import com.wrbug.developerhelper.util.visible
+import com.wrbug.developerhelper.databinding.DialogBackupAppSelectBinding
+import com.wrbug.developerhelper.databinding.ViewAppSettingBinding
 import com.wrbug.developerhelper.mmkv.ConfigKv
 import com.wrbug.developerhelper.mmkv.manager.MMKVManager
-import kotlinx.android.synthetic.main.view_app_setting.view.*
-import android.content.Intent
-import android.net.Uri
-import androidx.appcompat.widget.AppCompatButton
-import com.wrbug.developerhelper.basecommon.BaseActivity
-import com.wrbug.developerhelper.commonutil.shell.ShellManager
-import com.wrbug.developerhelper.commonutil.zip
-import com.wrbug.developerhelper.util.BackupUtils
-import com.wrbug.developerhelper.commonutil.toUri
-import gdut.bsx.share2.Share2
-import gdut.bsx.share2.ShareContentType
-import org.jetbrains.anko.doAsync
-import org.jetbrains.anko.uiThread
-import java.io.File
-
+import io.reactivex.rxjava3.disposables.CompositeDisposable
 
 class AppSettingView : ScrollView {
-    var apkInfo: ApkInfo? = null
+
+    private var apkInfo: ApkInfo? = null
     private val configKv = MMKVManager.get(ConfigKv::class.java)
-    private var exportDexBtn: AppCompatButton? = null
+    private lateinit var binding: ViewAppSettingBinding
+    private lateinit var disposable: CompositeDisposable
 
     constructor(context: Context) : super(context) {
         initView()
@@ -43,90 +36,85 @@ class AppSettingView : ScrollView {
         initView()
     }
 
-    private fun initView() {
-        LayoutInflater.from(context).inflate(R.layout.view_app_setting, this)
-        exportDexBtn = findViewById(R.id.exportDexBtn)
-        if (configKv.isOpenRoot().not()) {
-            backupApkBtn.isEnabled = false
-            backupApkDataDirBtn.isEnabled = false
-            restartAppBtn.isEnabled = false
-            stopAppBtn.isEnabled = false
-            deleteAppDataBtn.isEnabled = false
-            exportDexBtn?.isEnabled = false
+    fun setApkInfo(apkInfo: ApkInfo?) {
+        this.apkInfo = apkInfo
+        if (apkInfo?.applicationInfo?.packageName == BuildConfig.APPLICATION_ID) {
+            binding.uninstallAppBtn.visible = false
         }
+    }
+
+    private fun initView() {
+        binding = ViewAppSettingBinding.inflate(LayoutInflater.from(context), this, true)
         initListener()
     }
 
     private fun initListener() {
-        backupApkBtn.setOnClickListener {
-            doBackupApk()
+        binding.backupAppBtn.setOnRootCheckClickListener {
+            showBackupSelect()
         }
-        backupApkDataDirBtn.setOnClickListener {
-            doBackupDataDir()
+        binding.restoreAppBtn.setOnRootCheckClickListener {
         }
-        restartAppBtn.setOnClickListener {
+        binding.restartAppBtn.setOnRootCheckClickListener {
             doRestartApp()
         }
-        stopAppBtn.setOnClickListener {
+        binding.stopAppBtn.setOnRootCheckClickListener {
             doStopApp()
         }
-        deleteAppDataBtn.setOnClickListener {
+        binding.deleteAppDataBtn.setOnRootCheckClickListener {
             doDeleteAppData()
         }
-        uninstallAppBtn.setOnClickListener {
+        binding.uninstallAppBtn.setOnRootCheckClickListener {
             doUninstallApp()
         }
-
-        exportDexBtn?.setOnClickListener {
-            doBackupDexData()
-        }
     }
 
-    private fun doBackupDexData() {
-        apkInfo?.apply {
-            showToast(context.getString(R.string.packing_files))
-            doAsync {
-                val dir = File(context.externalCacheDir, "dex/${applicationInfo.packageName}")
-                if (dir.exists()) {
-                    ShellManager.rmFile(dir.absolutePath)
-                }
-                dir.mkdirs()
-                val dexDir = "/data/data/${applicationInfo.packageName}/dump"
-                val lsDir = ShellManager.lsDir(dexDir)
-                if (lsDir.isEmpty()) {
-                    uiThread {
-                        showToast(context.getString(R.string.no_dex_files))
-                    }
-                    return@doAsync
-                }
-                if (ShellManager.cpFile(dexDir, dir.absolutePath)) {
-                    val zipFile =
-                        File(context.externalCacheDir, "${apkInfo?.getAppName() ?: ""}-dex.zip")
-                    dir.zip(zipFile)
-                    val uri = zipFile.toUri(context)
-                    if (uri == null) {
-                        showToast(R.string.export_failed)
-                        return@doAsync
-                    }
-                    uiThread {
-                        showShareDexNotice(uri)
-                    }
-                } else {
-                    uiThread {
-                        showToast(context.getString(R.string.export_failed))
-                    }
-                }
+    private fun showBackupSelect() {
+        context.requestStoragePermission {
+            val selected = booleanArrayOf(false, false, false)
+            val binding = DialogBackupAppSelectBinding.inflate(LayoutInflater.from(context))
+            binding.cbApk.setOnCheckedChangeListener { _, isChecked ->
+                selected[0] = isChecked
             }
+            binding.cbData.setOnCheckedChangeListener { _, isChecked ->
+                selected[1] = isChecked
+            }
+            binding.cbAndroidData.setOnCheckedChangeListener { _, isChecked ->
+                selected[2] = isChecked
+            }
+            AlertDialog.Builder(context)
+                .setTitle(R.string.backup_app_file)
+                .setView(binding.root)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(
+                    R.string.ok
+                ) { _, _ ->
+                    doBackup(selected)
+                }.create().show()
         }
     }
 
-    private fun showShareDexNotice(uri: Uri) {
-        Share2.Builder(context as Activity)
-            .setContentType(ShareContentType.FILE)
-            .setShareFileUri(uri)
-            .setOnActivityResult(10)
-            .build()
-            .shareBySystem()
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        disposable = CompositeDisposable()
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        disposable.dispose()
+    }
+
+    private fun doBackup(selected: BooleanArray) {
+        val activity = context as? FragmentActivity ?: return
+        if (selected.find { it } == null) {
+            return
+        }
+        BackupAppDialog.show(
+            activity.supportFragmentManager,
+            apkInfo,
+            selected[0],
+            selected[1],
+            selected[2]
+        )
     }
 
     private fun doUninstallApp() {
@@ -141,13 +129,13 @@ class AppSettingView : ScrollView {
         }
         apkInfo?.apply {
             showNotice(
-                context.getString(R.string.confirm_delete_app_data),
-                DialogInterface.OnClickListener { _, _ ->
-                    if (AppManagerUtils.clearAppData(applicationInfo.packageName)) {
-                        activityFinish()
-                        showToast(context.getString(R.string.clear_complete))
-                    }
-                })
+                context.getString(R.string.confirm_delete_app_data)
+            ) {
+                if (AppManagerUtils.clearAppData(applicationInfo.packageName)) {
+                    activityFinish()
+                    showToast(context.getString(R.string.clear_complete))
+                }
+            }
 
         }
     }
@@ -157,13 +145,11 @@ class AppSettingView : ScrollView {
             return
         }
         apkInfo?.apply {
-            showNotice(
-                context.getString(R.string.confirm_stop_app),
-                DialogInterface.OnClickListener { _, _ ->
-                    if (AppManagerUtils.forceStopApp(applicationInfo.packageName)) {
-                        activityFinish()
-                    }
-                })
+            showNotice(context.getString(R.string.confirm_stop_app)) {
+                if (AppManagerUtils.forceStopApp(applicationInfo.packageName)) {
+                    activityFinish()
+                }
+            }
         }
     }
 
@@ -173,109 +159,12 @@ class AppSettingView : ScrollView {
         }
         apkInfo?.apply {
             showNotice(
-                context.getString(R.string.confirm_restart_app),
-                DialogInterface.OnClickListener { _, _ ->
-                    AppManagerUtils.restartApp(context, applicationInfo.packageName)
-                    activityFinish()
-                })
-        }
-    }
-
-    private fun doBackupDataDir() {
-        if (checkRoot().not()) {
-            return
-        }
-        apkInfo?.apply {
-            val backupAppData =
-                BackupUtils.backupAppData(applicationInfo.packageName, applicationInfo.dataDir)
-            if (backupAppData == null) {
-                showToast(context.getString(R.string.backup_failed))
-                return
+                context.getString(R.string.confirm_restart_app)
+            ) {
+                AppManagerUtils.restartApp(context, applicationInfo.packageName)
+                activityFinish()
             }
-            if (context !is BaseActivity) {
-                showToast(context.getString(R.string.backup_success_msg))
-                return
-            }
-            showShareDataNotice(backupAppData)
         }
-    }
-
-    private fun showShareDataNotice(backupAppData: File) {
-        showNotice(
-            context.getString(R.string.backup_success_and_share_msg),
-            DialogInterface.OnClickListener { _, _ ->
-                (context as BaseActivity).requestPermission(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                    object : BaseActivity.PermissionCallback() {
-                        override fun granted() {
-                            val zipFile = File(
-                                context.externalCacheDir,
-                                "${apkInfo?.getAppName() ?: ""}-data.zip"
-                            )
-                            backupAppData.zip(zipFile)
-                            val uri = zipFile.toUri(context)
-                            if (uri == null) {
-                                showToast(context.getString(R.string.share_failed))
-                                return
-                            }
-                            activityFinish()
-                            Share2.Builder(context as Activity)
-                                .setContentType(ShareContentType.FILE)
-                                .setShareFileUri(uri)
-                                .setOnActivityResult(10)
-                                .build()
-                                .shareBySystem()
-                        }
-
-                    })
-
-            })
-    }
-
-    private fun doBackupApk() {
-        if (checkRoot().not()) {
-            return
-        }
-        apkInfo?.apply {
-            val uri = BackupUtils.backupApk(
-                applicationInfo.packageName,
-                applicationInfo.publicSourceDir,
-                "${getAppName()}_${packageInfo.versionName}.apk"
-            )
-            if (uri == null) {
-                showToast(context.getString(R.string.backup_failed))
-                return
-            }
-            if (context !is BaseActivity) {
-                showToast(context.getString(R.string.backup_success_msg))
-                return
-            }
-            showShareApkDialog(uri)
-
-        }
-    }
-
-    private fun showShareApkDialog(uri: Uri) {
-        showNotice(
-            context.getString(R.string.backup_success_and_share_msg),
-            DialogInterface.OnClickListener { _, _ ->
-                (context as BaseActivity).requestPermission(arrayOf(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                ),
-                    object : BaseActivity.PermissionCallback() {
-                        override fun granted() {
-                            activityFinish()
-                            Share2.Builder(context as Activity)
-                                .setContentType(ShareContentType.FILE)
-                                .setShareFileUri(uri)
-                                .setOnActivityResult(10)
-                                .build()
-                                .shareBySystem()
-                        }
-
-                    })
-
-            })
     }
 
     private fun checkRoot(): Boolean {
@@ -292,12 +181,11 @@ class AppSettingView : ScrollView {
         }
     }
 
-    private fun showNotice(msg: String, listener: DialogInterface.OnClickListener) {
-        AlertDialog.Builder(context)
-            .setTitle(R.string.notice)
-            .setMessage(msg)
-            .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.ok, listener)
-            .create().show()
+    private fun showNotice(msg: String, listener: () -> Unit) {
+        AlertDialog.Builder(context).setTitle(R.string.notice).setMessage(msg)
+            .setNegativeButton(R.string.cancel, null).setPositiveButton(
+                R.string.ok
+            ) { _, _ -> listener() }.create().show()
     }
+
 }

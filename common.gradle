@@ -1,0 +1,19 @@
+apply plugin: 'kotlin-parcelize'
+
+android {
+    buildFeatures {
+        viewBinding true
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+    lintOptions {
+        abortOnError true
+        disable 'UnusedResources'
+        ignoreWarnings true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
